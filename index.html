@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Project Roadmap Graph</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; height: 100vh; color: #333; }
+        #sidebar { width: 320px; padding: 20px; border-right: 1px solid #ddd; overflow-y: auto; background: #f4f7f6; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
+        #cy { flex-grow: 1; height: 100%; background: #ffffff; }
+        .input-group { margin-bottom: 12px; }
+        label { display: block; font-size: 0.9em; font-weight: bold; margin-bottom: 4px; }
+        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        button.delete { background: #dc3545; margin-top: 20px; }
+        .legend { margin-top: 20px; font-size: 0.85em; border-top: 1px solid #ddd; pt: 10px; }
+        .dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; border: 1px solid #999; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>Project Manager</h2>
+    
+    <div class="input-group">
+        <label>Project Name (Unique ID)</label>
+        <input type="text" id="projName" placeholder="e.g. Database Setup">
+    </div>
+    
+    <div class="input-group">
+        <label>Description</label>
+        <textarea id="projDesc" rows="2"></textarea>
+    </div>
+
+    <div class="input-group">
+        <label>Status</label>
+        <select id="projStatus">
+            <option value="not-started">Haven't Started</option>
+            <option value="in-progress">In Progress</option>
+            <option value="completed">Completed</option>
+        </select>
+    </div>
+
+    <div class="input-group">
+        <label>Requires (Parent Name)</label>
+        <input type="text" id="projParent" placeholder="Name of dependency">
+    </div>
+
+    <button onclick="addProject()">Add / Update Project</button>
+
+    <div class="legend">
+        <h4>Status Legend</h4>
+        <p><span class="dot" style="background: #fff;"></span> Haven't Started (White)</p>
+        <p><span class="dot" style="background: #ffeb3b;"></span> In Progress (Yellow)</p>
+        <p><span class="dot" style="background: #4caf50;"></span> Completed (Green)</p>
+    </div>
+
+    <button class="delete" onclick="clearData()">Wipe All Data</button>
+</div>
+
+<div id="cy"></div>
+
+<script>
+    // Initialize Cytoscape with conditional styling
+    let cy = cytoscape({
+        container: document.getElementById('cy'),
+        style: [
+            {
+                selector: 'node',
+                style: {
+                    'label': 'data(id)',
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'width': 80,
+                    'height': 80,
+                    'font-size': '12px',
+                    'border-width': 2,
+                    'border-color': '#666',
+                    // Default Color (Haven't Started)
+                    'background-color': '#ffffff',
+                    'color': '#333'
+                }
+            },
+            {
+                // In Progress Styling
+                selector: 'node[status = "in-progress"]',
+                style: {
+                    'background-color': '#ffeb3b',
+                }
+            },
+            {
+                // Completed Styling
+                selector: 'node[status = "completed"]',
+                style: {
+                    'background-color': '#4caf50',
+                    'color': '#fff'
+                }
+            },
+            {
+                selector: 'edge',
+                style: {
+                    'width': 2,
+                    'line-color': '#999',
+                    'target-arrow-color': '#999',
+                    'target-arrow-shape': 'triangle',
+                    'curve-style': 'bezier'
+                }
+            }
+        ],
+        layout: { name: 'breadthfirst', directed: true, padding: 50 }
+    });
+
+    // Load Data
+    const savedData = localStorage.getItem('projectGraphV2');
+    if (savedData) {
+        cy.add(JSON.parse(savedData));
+        runLayout();
+    }
+
+    function runLayout() {
+        cy.layout({ name: 'breadthfirst', directed: true, spacingFactor: 1.2 }).run();
+    }
+
+    function addProject() {
+        const name = document.getElementById('projName').value.trim();
+        const desc = document.getElementById('projDesc').value;
+        const status = document.getElementById('projStatus').value;
+        const parent = document.getElementById('projParent').value.trim();
+
+        if (!name) return alert("Please enter a project name.");
+
+        // If node exists, update it; otherwise, create it
+        let existingNode = cy.getElementById(name);
+        if (existingNode.length > 0) {
+            existingNode.data('status', status);
+            existingNode.data('description', desc);
+        } else {
+            cy.add({
+                group: 'nodes',
+                data: { id: name, description: desc, status: status }
+            });
+        }
+
+        // Handle Dependency
+        if (parent && cy.getElementById(parent).length > 0) {
+            // Check if edge already exists to prevent duplicates
+            if (cy.edges(`[source="${parent}"][target="${name}"]`).length === 0) {
+                cy.add({
+                    group: 'edges',
+                    data: { source: parent, target: name }
+                });
+            }
+        }
+
+        saveData();
+        runLayout();
+        document.getElementById('projName').value = '';
+    }
+
+    function saveData() {
+        localStorage.setItem('projectGraphV2', JSON.stringify(cy.elements().jsons()));
+    }
+
+    // Tap to delete or view info
+    cy.on('tap', 'node', function(evt){
+        const node = evt.target;
+        const info = `Project: ${node.id()}\nStatus: ${node.data('status')}\nDescription: ${node.data('description') || 'No description'}`;
+        
+        if(confirm(`${info}\n\nDo you want to DELETE this project?`)) {
+            cy.remove(node);
+            saveData();
+        }
+    });
+
+    function clearData() {
+        if(confirm("This will delete your entire roadmap. Are you sure?")) {
+            localStorage.clear();
+            cy.elements().remove();
+        }
+    }
+</script>
+
+</body>
+</html>
