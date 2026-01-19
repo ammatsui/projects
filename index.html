@@ -5,33 +5,29 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; height: 100vh; color: #333; }
-        #sidebar { width: 320px; padding: 20px; border-right: 1px solid #ddd; overflow-y: auto; background: #f4f7f6; }
+        #sidebar { width: 340px; padding: 20px; border-right: 1px solid #ddd; overflow-y: auto; background: #f4f7f6; }
         #cy { flex-grow: 1; height: 100%; background: #ffffff; }
-        
         .input-group { margin-bottom: 12px; }
         label { display: block; font-size: 0.85em; font-weight: bold; margin-bottom: 4px; color: #555; }
-        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
-        
+        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
         .btn-group { display: flex; gap: 5px; margin-top: 10px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-add { background: #28a745; color: white; }
-        .btn-clear { background: #6c757d; color: white; margin-top: 20px; width: 100%; }
-        .btn-delete-node { background: #dc3545; color: white; display: none; } /* Hidden until node selected */
-        
-        .editing-hint { font-size: 0.8em; color: #007bff; margin-bottom: 10px; display: none; }
-        .legend { margin-top: 20px; font-size: 0.8em; border-top: 1px solid #ddd; padding-top: 10px; }
-        .dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; border: 1px solid #999; }
+        .btn-save { background: #28a745; color: white; }
+        .btn-cancel { background: #6c757d; color: white; }
+        .btn-delete { background: #dc3545; color: white; margin-top: 10px; width: 100%; display: none; }
+        .hint { font-size: 0.75em; color: #666; margin-top: 2px; }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
     <h2 id="formTitle">Add Project</h2>
-    <div id="editHint" class="editing-hint">⚡ Editing mode active</div>
     
+    <input type="hidden" id="nodeInternalId">
+
     <div class="input-group">
-        <label>Project Name (ID)</label>
-        <input type="text" id="projName" placeholder="e.g. MyProject">
+        <label>Project Name</label>
+        <input type="text" id="projName" placeholder="e.g. Design UI">
     </div>
     
     <div class="input-group">
@@ -49,101 +45,91 @@
     </div>
 
     <div class="input-group">
-        <label>Requires (Dependency)</label>
-        <input type="text" id="projParent" placeholder="Parent name...">
+        <label>Requires (Multiple parents ok)</label>
+        <input type="text" id="projParents" placeholder="Parent A, Parent B...">
+        <div class="hint">Separate names with commas</div>
     </div>
 
     <div class="btn-group">
-        <button class="btn-add" onclick="saveProject()">Save Changes</button>
-        <button id="deleteBtn" class="btn-delete-node" onclick="deleteSelectedNode()">Delete Project</button>
+        <button class="btn-save" onclick="saveProject()">Save Project</button>
+        <button class="btn-cancel" onclick="resetForm()">Clear/Cancel</button>
     </div>
+    <button id="deleteBtn" class="btn-delete" onclick="deleteNode()">Delete Project</button>
 
-    <div class="legend">
-        <p><span class="dot" style="background: #fff;"></span> Not Started</p>
-        <p><span class="dot" style="background: #ffeb3b;"></span> In Progress</p>
-        <p><span class="dot" style="background: #4caf50;"></span> Completed</p>
-        <hr>
-        <small>Tip: Click any circle in the graph to edit its details.</small>
-    </div>
-
-    <button class="btn-clear" onclick="clearAll()">Reset Entire Graph</button>
+    <hr style="margin: 20px 0;">
+    <button style="background: #333; color: white; width: 100%;" onclick="clearAll()">Wipe All Data</button>
 </div>
 
 <div id="cy"></div>
 
 <script>
-    let selectedNodeId = null;
-
     let cy = cytoscape({
         container: document.getElementById('cy'),
         style: [
-            { selector: 'node', style: { 'label': 'data(id)', 'text-valign': 'center', 'text-halign': 'center', 'width': 80, 'height': 80, 'background-color': '#fff', 'border-width': 2, 'border-color': '#666' } },
+            { selector: 'node', style: { 'label': 'data(name)', 'text-valign': 'center', 'text-halign': 'center', 'width': 90, 'height': 90, 'background-color': '#fff', 'border-width': 2, 'border-color': '#666', 'font-size': '12px', 'text-wrap': 'wrap', 'text-max-width': '80px' } },
             { selector: 'node[status="in-progress"]', style: { 'background-color': '#ffeb3b' } },
             { selector: 'node[status="completed"]', style: { 'background-color': '#4caf50', 'color': '#fff' } },
-            { selector: 'edge', style: { 'width': 2, 'line-color': '#999', 'target-arrow-shape': 'triangle', 'curve-style': 'straight' } },
+            { selector: 'edge', style: { 'width': 2, 'line-color': '#999', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier' } },
             { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#007bff' } }
         ],
         layout: { name: 'breadthfirst', directed: true }
     });
 
-    // Load Data
-    const saved = localStorage.getItem('projectGraphV3');
+    const storageKey = 'projectGraphV4';
+    const saved = localStorage.getItem(storageKey);
     if (saved) { cy.add(JSON.parse(saved)); runLayout(); }
 
     function runLayout() { cy.layout({ name: 'breadthfirst', directed: true, spacingFactor: 1.2 }).run(); }
 
-    // CLICK HANDLER: Populate sidebar for editing
+    // CLICK TO EDIT
     cy.on('tap', 'node', function(evt){
         const node = evt.target;
-        selectedNodeId = node.id();
-        
-        // Fill form fields with existing data
-        document.getElementById('projName').value = node.id();
+        document.getElementById('nodeInternalId').value = node.id();
+        document.getElementById('projName').value = node.data('name');
         document.getElementById('projDesc').value = node.data('description') || '';
         document.getElementById('projStatus').value = node.data('status') || 'not-started';
         
-        // Find if it has a parent (incoming edge)
-        const incoming = node.incomers('edge');
-        document.getElementById('projParent').value = incoming.length > 0 ? incoming[0].source().id() : '';
+        // Map parents back to a comma-separated string
+        const parentNames = node.incomers('edge').sources().map(n => n.data('name')).join(', ');
+        document.getElementById('projParents').value = parentNames;
 
-        // UI Updates
         document.getElementById('formTitle').innerText = "Edit Project";
-        document.getElementById('editHint').style.display = "block";
         document.getElementById('deleteBtn').style.display = "block";
-        document.getElementById('projName').disabled = true; // Don't rename ID to avoid breaking links
-    });
-
-    // Deselect handler
-    cy.on('tap', function(evt){
-        if(evt.target === cy){
-            resetForm();
-        }
     });
 
     function saveProject() {
+        const internalId = document.getElementById('nodeInternalId').value;
         const name = document.getElementById('projName').value.trim();
         const desc = document.getElementById('projDesc').value;
         const status = document.getElementById('projStatus').value;
-        const parent = document.getElementById('projParent').value.trim();
+        const parentsInput = document.getElementById('projParents').value;
 
-        if (!name) return;
+        if (!name) return alert("Name is required");
 
-        let node = cy.getElementById(name);
-        
-        if (node.length > 0) {
-            // Edit existing
+        let node;
+        if (internalId) {
+            // EDITING EXISTING
+            node = cy.getElementById(internalId);
+            node.data('name', name); // Rename works here!
             node.data('description', desc);
             node.data('status', status);
+            // Remove old edges to rebuild them
+            cy.edges(`[target="${internalId}"]`).remove();
         } else {
-            // Add new
-            cy.add({ group: 'nodes', data: { id: name, description: desc, status: status } });
+            // NEW NODE
+            const newId = 'id' + Date.now(); // Unique internal ID
+            node = cy.add({ group: 'nodes', data: { id: newId, name: name, description: desc, status: status } });
         }
 
-        // Handle dependency (one field edit)
-        if (parent && cy.getElementById(parent).length > 0 && parent !== name) {
-            // Remove old edges if changing dependency
-            cy.edges(`[target="${name}"]`).remove();
-            cy.add({ group: 'edges', data: { source: parent, target: name } });
+        // HANDLE MULTIPLE PARENTS
+        if (parentsInput.trim() !== "") {
+            const parentList = parentsInput.split(',').map(p => p.trim());
+            parentList.forEach(parentName => {
+                const parentNode = cy.nodes().filter(n => n.data('name') === parentName);
+                if (parentNode.length > 0) {
+                    cy.add({ group: 'edges', data: { source: parentNode.id(), target: node.id() } });
+                }
+            });
         }
 
         persist();
@@ -151,27 +137,27 @@
         resetForm();
     }
 
-    function deleteSelectedNode() {
-        if (selectedNodeId && confirm("Delete this project?")) {
-            cy.getElementById(selectedNodeId).remove();
+    function resetForm() {
+        document.getElementById('nodeInternalId').value = '';
+        document.getElementById('projName').value = '';
+        document.getElementById('projDesc').value = '';
+        document.getElementById('projStatus').value = 'not-started';
+        document.getElementById('projParents').value = '';
+        document.getElementById('formTitle').innerText = "Add Project";
+        document.getElementById('deleteBtn').style.display = "none";
+        cy.nodes().unselect();
+    }
+
+    function deleteNode() {
+        const id = document.getElementById('nodeInternalId').value;
+        if (id && confirm("Delete this project?")) {
+            cy.getElementById(id).remove();
             persist();
             resetForm();
         }
     }
 
-    function resetForm() {
-        selectedNodeId = null;
-        document.getElementById('projName').value = '';
-        document.getElementById('projName').disabled = false;
-        document.getElementById('projDesc').value = '';
-        document.getElementById('projStatus').value = 'not-started';
-        document.getElementById('projParent').value = '';
-        document.getElementById('formTitle').innerText = "Add Project";
-        document.getElementById('editHint').style.display = "none";
-        document.getElementById('deleteBtn').style.display = "none";
-    }
-
-    function persist() { localStorage.setItem('projectGraphV3', JSON.stringify(cy.elements().jsons())); }
+    function persist() { localStorage.setItem(storageKey, JSON.stringify(cy.elements().jsons())); }
     function clearAll() { if(confirm("Clear all?")) { localStorage.clear(); cy.elements().remove(); resetForm(); } }
 </script>
 
