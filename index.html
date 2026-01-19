@@ -1,63 +1,65 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Project Roadmap Graph</title>
+    <title>Project Roadmap Card View</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; height: 100vh; color: #333; }
-        #sidebar { width: 340px; padding: 20px; border-right: 1px solid #ddd; overflow-y: auto; background: #f4f7f6; }
-        #cy { flex-grow: 1; height: 100%; background: #ffffff; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; height: 100vh; color: #333; overflow: hidden; }
+        #sidebar { width: 340px; padding: 20px; border-right: 1px solid #ddd; overflow-y: auto; background: #f4f7f6; flex-shrink: 0; }
+        #cy { flex-grow: 1; height: 100%; background: #eef2f3; }
+        
         .input-group { margin-bottom: 12px; }
         label { display: block; font-size: 0.85em; font-weight: bold; margin-bottom: 4px; color: #555; }
-        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        .btn-group { display: flex; gap: 5px; margin-top: 10px; }
+        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-family: inherit; }
+        
+        .btn-group { display: flex; gap: 5px; margin-top: 15px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .btn-save { background: #28a745; color: white; }
         .btn-cancel { background: #6c757d; color: white; }
         .btn-delete { background: #dc3545; color: white; margin-top: 10px; width: 100%; display: none; }
-        .hint { font-size: 0.75em; color: #666; margin-top: 2px; }
+        .hint { font-size: 0.7em; color: #777; margin-top: 4px; }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <h2 id="formTitle">Add Project</h2>
-    
+    <h2 id="formTitle" style="margin-top:0">Project Card</h2>
     <input type="hidden" id="nodeInternalId">
 
     <div class="input-group">
         <label>Project Name</label>
-        <input type="text" id="projName" placeholder="e.g. Design UI">
-    </div>
-    
-    <div class="input-group">
-        <label>Description</label>
-        <textarea id="projDesc" rows="2"></textarea>
+        <input type="text" id="projName" placeholder="Project Title">
     </div>
 
     <div class="input-group">
         <label>Status</label>
         <select id="projStatus">
-            <option value="not-started">Haven't Started</option>
+            <option value="not-started">Not Started</option>
             <option value="in-progress">In Progress</option>
             <option value="completed">Completed</option>
         </select>
     </div>
 
     <div class="input-group">
-        <label>Requires (Multiple parents ok)</label>
-        <input type="text" id="projParents" placeholder="Parent A, Parent B...">
-        <div class="hint">Separate names with commas</div>
+        <label>To-Do Items (one per line)</label>
+        <textarea id="projTodos" rows="5" placeholder="Step 1&#10;Step 2"></textarea>
+    </div>
+
+    <div class="input-group">
+        <label>Requires (comma separated names)</label>
+        <input type="text" id="projParents" placeholder="Parent A, Parent B">
     </div>
 
     <div class="btn-group">
-        <button class="btn-save" onclick="saveProject()">Save Project</button>
-        <button class="btn-cancel" onclick="resetForm()">Clear/Cancel</button>
+        <button class="btn-save" onclick="saveProject()">Apply Changes</button>
+        <button class="btn-cancel" onclick="resetForm()">New/Clear</button>
     </div>
+    
     <button id="deleteBtn" class="btn-delete" onclick="deleteNode()">Delete Project</button>
 
-    <hr style="margin: 20px 0;">
-    <button style="background: #333; color: white; width: 100%;" onclick="clearAll()">Wipe All Data</button>
+    <div style="margin-top:30px; font-size: 0.8em; color: #666;">
+        <strong>How to resize:</strong> All nodes auto-scale based on content. Add more text to a node to see it grow.
+    </div>
 </div>
 
 <div id="cy"></div>
@@ -66,69 +68,90 @@
     let cy = cytoscape({
         container: document.getElementById('cy'),
         style: [
-            { selector: 'node', style: { 'label': 'data(name)', 'text-valign': 'center', 'text-halign': 'center', 'width': 90, 'height': 90, 'background-color': '#fff', 'border-width': 2, 'border-color': '#666', 'font-size': '12px', 'text-wrap': 'wrap', 'text-max-width': '80px' } },
-            { selector: 'node[status="in-progress"]', style: { 'background-color': '#ffeb3b' } },
-            { selector: 'node[status="completed"]', style: { 'background-color': '#4caf50', 'color': '#fff' } },
-            { selector: 'edge', style: { 'width': 2, 'line-color': '#999', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier' } },
+            { 
+                selector: 'node', 
+                style: { 
+                    'shape': 'rectangle',
+                    'background-color': '#fff',
+                    'label': function(ele) {
+                        const data = ele.data();
+                        const todos = data.todos && data.todos.length > 0 
+                            ? "\n-- TASKS --\n• " + data.todos.join('\n• ') 
+                            : "";
+                        return `${data.name.toUpperCase()}\n[${data.status.replace('-', ' ')}]${todos}`;
+                    },
+                    'text-wrap': 'wrap',
+                    'text-max-width': '180px',
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'padding': '20px',
+                    'width': 'label', // Auto-scaling width
+                    'height': 'label', // Auto-scaling height
+                    'border-width': 2,
+                    'border-color': '#333',
+                    'font-size': '12px',
+                    'line-height': 1.5,
+                    'text-justification': 'left'
+                } 
+            },
+            { selector: 'node[status="in-progress"]', style: { 'background-color': '#fff9c4', 'border-color': '#fbc02d' } },
+            { selector: 'node[status="completed"]', style: { 'background-color': '#c8e6c9', 'border-color': '#388e3c' } },
+            { selector: 'edge', style: { 'width': 2, 'line-color': '#999', 'target-arrow-shape': 'triangle', 'target-arrow-color': '#999', 'curve-style': 'taxi', 'taxi-direction': 'vertical' } },
             { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#007bff' } }
         ],
         layout: { name: 'breadthfirst', directed: true }
     });
 
-    const storageKey = 'projectGraphV4';
+    const storageKey = 'projectGraphV6';
     const saved = localStorage.getItem(storageKey);
     if (saved) { cy.add(JSON.parse(saved)); runLayout(); }
 
-    function runLayout() { cy.layout({ name: 'breadthfirst', directed: true, spacingFactor: 1.2 }).run(); }
+    function runLayout() { 
+        cy.layout({ 
+            name: 'breadthfirst', 
+            directed: true, 
+            padding: 50, 
+            spacingFactor: 1.5 // Increased space for larger rectangles
+        }).run(); 
+    }
 
-    // CLICK TO EDIT
     cy.on('tap', 'node', function(evt){
         const node = evt.target;
+        const data = node.data();
         document.getElementById('nodeInternalId').value = node.id();
-        document.getElementById('projName').value = node.data('name');
-        document.getElementById('projDesc').value = node.data('description') || '';
-        document.getElementById('projStatus').value = node.data('status') || 'not-started';
+        document.getElementById('projName').value = data.name;
+        document.getElementById('projStatus').value = data.status || 'not-started';
+        document.getElementById('projTodos').value = (data.todos || []).join('\n');
+        document.getElementById('projParents').value = node.incomers('edge').sources().map(n => n.data('name')).join(', ');
         
-        // Map parents back to a comma-separated string
-        const parentNames = node.incomers('edge').sources().map(n => n.data('name')).join(', ');
-        document.getElementById('projParents').value = parentNames;
-
-        document.getElementById('formTitle').innerText = "Edit Project";
+        document.getElementById('formTitle').innerText = "Edit Card";
         document.getElementById('deleteBtn').style.display = "block";
     });
 
     function saveProject() {
         const internalId = document.getElementById('nodeInternalId').value;
         const name = document.getElementById('projName').value.trim();
-        const desc = document.getElementById('projDesc').value;
         const status = document.getElementById('projStatus').value;
+        const todoText = document.getElementById('projTodos').value;
         const parentsInput = document.getElementById('projParents').value;
 
-        if (!name) return alert("Name is required");
+        const todoArray = todoText.split('\n').map(t => t.trim()).filter(t => t !== "");
+        if (!name) return alert("Enter a name");
 
         let node;
         if (internalId) {
-            // EDITING EXISTING
             node = cy.getElementById(internalId);
-            node.data('name', name); // Rename works here!
-            node.data('description', desc);
-            node.data('status', status);
-            // Remove old edges to rebuild them
+            node.data({ name, status, todos: todoArray });
             cy.edges(`[target="${internalId}"]`).remove();
         } else {
-            // NEW NODE
-            const newId = 'id' + Date.now(); // Unique internal ID
-            node = cy.add({ group: 'nodes', data: { id: newId, name: name, description: desc, status: status } });
+            const newId = 'id' + Date.now();
+            node = cy.add({ group: 'nodes', data: { id: newId, name, status, todos: todoArray } });
         }
 
-        // HANDLE MULTIPLE PARENTS
         if (parentsInput.trim() !== "") {
-            const parentList = parentsInput.split(',').map(p => p.trim());
-            parentList.forEach(parentName => {
-                const parentNode = cy.nodes().filter(n => n.data('name') === parentName);
-                if (parentNode.length > 0) {
-                    cy.add({ group: 'edges', data: { source: parentNode.id(), target: node.id() } });
-                }
+            parentsInput.split(',').map(p => p.trim()).forEach(pName => {
+                const pNode = cy.nodes().filter(n => n.data('name') === pName);
+                if (pNode.length > 0) cy.add({ group: 'edges', data: { source: pNode.id(), target: node.id() } });
             });
         }
 
@@ -140,25 +163,20 @@
     function resetForm() {
         document.getElementById('nodeInternalId').value = '';
         document.getElementById('projName').value = '';
-        document.getElementById('projDesc').value = '';
         document.getElementById('projStatus').value = 'not-started';
+        document.getElementById('projTodos').value = '';
         document.getElementById('projParents').value = '';
-        document.getElementById('formTitle').innerText = "Add Project";
+        document.getElementById('formTitle').innerText = "Project Card";
         document.getElementById('deleteBtn').style.display = "none";
         cy.nodes().unselect();
     }
 
     function deleteNode() {
         const id = document.getElementById('nodeInternalId').value;
-        if (id && confirm("Delete this project?")) {
-            cy.getElementById(id).remove();
-            persist();
-            resetForm();
-        }
+        if (id && confirm("Delete card?")) { cy.getElementById(id).remove(); persist(); resetForm(); }
     }
 
     function persist() { localStorage.setItem(storageKey, JSON.stringify(cy.elements().jsons())); }
-    function clearAll() { if(confirm("Clear all?")) { localStorage.clear(); cy.elements().remove(); resetForm(); } }
 </script>
 
 </body>
