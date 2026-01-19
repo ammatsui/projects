@@ -17,7 +17,10 @@
         .btn-save { background: #28a745; color: white; }
         .btn-cancel { background: #6c757d; color: white; }
         .btn-delete { background: #dc3545; color: white; margin-top: 10px; width: 100%; display: none; }
-        .hint { font-size: 0.7em; color: #777; margin-top: 4px; }
+        
+        #resetZoom { position: absolute; bottom: 20px; right: 20px; background: white; border: 1px solid #ccc; padding: 10px; cursor: pointer; border-radius: 4px; z-index: 10; font-weight: bold; }
+        .legend { font-size: 0.8em; margin-top: 20px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; }
+        .swatch { display: inline-block; width: 12px; height: 12px; margin-right: 5px; border: 1px solid #999; vertical-align: middle; }
     </style>
 </head>
 <body>
@@ -32,21 +35,31 @@
     </div>
 
     <div class="input-group">
-        <label>Status</label>
+        <label>Description</label>
+        <textarea id="projDesc" rows="2" placeholder="Brief summary..."></textarea>
+    </div>
+
+    <div class="input-group">
+        <label>Status (Card Color)</label>
         <select id="projStatus">
-            <option value="not-started">Not Started</option>
-            <option value="in-progress">In Progress</option>
-            <option value="completed">Completed</option>
+            <option value="not-started">Haven't Started (White)</option>
+            <option value="in-progress">In Progress (Yellow)</option>
+            <option value="completed">Completed (Green)</option>
         </select>
     </div>
 
     <div class="input-group">
-        <label>To-Do Items (one per line)</label>
-        <textarea id="projTodos" rows="5" placeholder="Step 1&#10;Step 2"></textarea>
+        <label>Difficulty (1-5)</label>
+        <input type="number" id="projDiff" min="1" max="5" value="1">
     </div>
 
     <div class="input-group">
-        <label>Requires (comma separated names)</label>
+        <label>To-Do Items (one per line)</label>
+        <textarea id="projTodos" rows="4" placeholder="Task 1&#10;Task 2"></textarea>
+    </div>
+
+    <div class="input-group">
+        <label>Requires (parent names)</label>
         <input type="text" id="projParents" placeholder="Parent A, Parent B">
     </div>
 
@@ -57,11 +70,15 @@
     
     <button id="deleteBtn" class="btn-delete" onclick="deleteNode()">Delete Project</button>
 
-    <div style="margin-top:30px; font-size: 0.8em; color: #666;">
-        <strong>How to resize:</strong> All nodes auto-scale based on content. Add more text to a node to see it grow.
+    <div class="legend">
+        <strong>Status Legend:</strong><br>
+        <span class="swatch" style="background:#fff"></span> Not Started<br>
+        <span class="swatch" style="background:#fffde7"></span> In Progress<br>
+        <span class="swatch" style="background:#e8f5e9"></span> Completed
     </div>
 </div>
 
+<button id="resetZoom" onclick="cy.fit()">Zoom to Fit</button>
 <div id="cy"></div>
 
 <script>
@@ -74,45 +91,42 @@
                     'shape': 'rectangle',
                     'background-color': '#fff',
                     'label': function(ele) {
-                        const data = ele.data();
-                        const todos = data.todos && data.todos.length > 0 
-                            ? "\n-- TASKS --\n• " + data.todos.join('\n• ') 
+                        const d = ele.data();
+                        const desc = d.description ? `\n"${d.description}"` : "";
+                        const diff = `\nDifficulty: ${'★'.repeat(d.difficulty || 1)}`;
+                        const todos = d.todos && d.todos.length > 0 
+                            ? "\n\nTASKS:\n• " + d.todos.join('\n• ') 
                             : "";
-                        return `${data.name.toUpperCase()}\n[${data.status.replace('-', ' ')}]${todos}`;
+                        return `${d.name.toUpperCase()}${desc}${diff}${todos}`;
                     },
                     'text-wrap': 'wrap',
-                    'text-max-width': '180px',
+                    'text-max-width': '200px',
                     'text-valign': 'center',
                     'text-halign': 'center',
-                    'padding': '20px',
-                    'width': 'label', // Auto-scaling width
-                    'height': 'label', // Auto-scaling height
+                    'padding': '15px',
+                    'width': 'label',
+                    'height': 'label',
                     'border-width': 2,
-                    'border-color': '#333',
-                    'font-size': '12px',
-                    'line-height': 1.5,
+                    'border-color': '#444',
+                    'font-size': '11px',
+                    'line-height': 1.4,
                     'text-justification': 'left'
                 } 
             },
-            { selector: 'node[status="in-progress"]', style: { 'background-color': '#fff9c4', 'border-color': '#fbc02d' } },
-            { selector: 'node[status="completed"]', style: { 'background-color': '#c8e6c9', 'border-color': '#388e3c' } },
+            { selector: 'node[status="in-progress"]', style: { 'background-color': '#fffde7', 'border-color': '#fbc02d' } },
+            { selector: 'node[status="completed"]', style: { 'background-color': '#e8f5e9', 'border-color': '#2e7d32' } },
             { selector: 'edge', style: { 'width': 2, 'line-color': '#999', 'target-arrow-shape': 'triangle', 'target-arrow-color': '#999', 'curve-style': 'taxi', 'taxi-direction': 'vertical' } },
             { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#007bff' } }
         ],
         layout: { name: 'breadthfirst', directed: true }
     });
 
-    const storageKey = 'projectGraphV6';
+    const storageKey = 'projectGraphFinal';
     const saved = localStorage.getItem(storageKey);
     if (saved) { cy.add(JSON.parse(saved)); runLayout(); }
 
     function runLayout() { 
-        cy.layout({ 
-            name: 'breadthfirst', 
-            directed: true, 
-            padding: 50, 
-            spacingFactor: 1.5 // Increased space for larger rectangles
-        }).run(); 
+        cy.layout({ name: 'breadthfirst', directed: true, padding: 50, spacingFactor: 1.4 }).run(); 
     }
 
     cy.on('tap', 'node', function(evt){
@@ -120,7 +134,9 @@
         const data = node.data();
         document.getElementById('nodeInternalId').value = node.id();
         document.getElementById('projName').value = data.name;
+        document.getElementById('projDesc').value = data.description || '';
         document.getElementById('projStatus').value = data.status || 'not-started';
+        document.getElementById('projDiff').value = data.difficulty || 1;
         document.getElementById('projTodos').value = (data.todos || []).join('\n');
         document.getElementById('projParents').value = node.incomers('edge').sources().map(n => n.data('name')).join(', ');
         
@@ -131,7 +147,9 @@
     function saveProject() {
         const internalId = document.getElementById('nodeInternalId').value;
         const name = document.getElementById('projName').value.trim();
+        const desc = document.getElementById('projDesc').value.trim();
         const status = document.getElementById('projStatus').value;
+        const diff = document.getElementById('projDiff').value;
         const todoText = document.getElementById('projTodos').value;
         const parentsInput = document.getElementById('projParents').value;
 
@@ -141,11 +159,11 @@
         let node;
         if (internalId) {
             node = cy.getElementById(internalId);
-            node.data({ name, status, todos: todoArray });
+            node.data({ name, description: desc, status, difficulty: diff, todos: todoArray });
             cy.edges(`[target="${internalId}"]`).remove();
         } else {
             const newId = 'id' + Date.now();
-            node = cy.add({ group: 'nodes', data: { id: newId, name, status, todos: todoArray } });
+            node = cy.add({ group: 'nodes', data: { id: newId, name, description: desc, status, difficulty: diff, todos: todoArray } });
         }
 
         if (parentsInput.trim() !== "") {
@@ -163,7 +181,9 @@
     function resetForm() {
         document.getElementById('nodeInternalId').value = '';
         document.getElementById('projName').value = '';
+        document.getElementById('projDesc').value = '';
         document.getElementById('projStatus').value = 'not-started';
+        document.getElementById('projDiff').value = 1;
         document.getElementById('projTodos').value = '';
         document.getElementById('projParents').value = '';
         document.getElementById('formTitle').innerText = "Project Card";
